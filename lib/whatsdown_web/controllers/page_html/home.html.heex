@@ -1,0 +1,214 @@
+ <div class="background-green"></div>
+  <div class="main-container">
+    <div class="left-container">
+      <!-- Header -->
+      <div class="header">
+        <div class="user-img">
+          <img class="dp" src="https://thumbs.dreamstime.com/b/default-avatar-profile-vector-user-profile-default-avatar-profile-vector-user-profile-profile-179376714.jpg" alt="">
+        </div>
+        <div class="nav-icons">
+          <li><i class="fa-solid fa-users"></i></li>
+          <li><i class="fa-solid fa-message"></i></li>
+          <li><i class="fa-solid fa-ellipsis-vertical"></i></li>
+        </div>
+      </div>
+      <!-- Notification -->
+      <div class="notif-box">
+        <i class="fa-solid fa-bell-slash"></i>
+        <div class="notif-text">
+          <p>Get Notified of New Messages</p>
+          <a href="#">Turn on Desktop Notifications ›</a>
+        </div>
+        <i class="fa-solid fa-xmark"></i>
+      </div>
+      <!-- Search -->
+      <div class="search-container">
+        <div class="input">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" placeholder="Search or start new chat">
+        </div>
+        <i class="fa-sharp fa-solid fa-bars-filter"></i>
+      </div>
+      <!-- Chat List -->
+      <div class="chat-list">
+        <!-- User chats will be dynamically added here -->
+      </div>
+      <!-- Add User Button -->
+      <button id="addUserButton" style="margin: 10px; padding: 10px;">Add New User</button>
+    </div>
+    <div class="right-container">
+      <!-- Header -->
+      <div class="header">
+        <div class="img-text">
+          <div class="user-img">
+            <img class="dp" id="chatUserImg" src="https://via.placeholder.com/40" alt="">
+          </div>
+          <h4 id="chatUserName">Select a User<br><span id="chatUserStatus">Offline</span></h4>
+        </div>
+        <div class="nav-icons">
+          <li><i class="fa-solid fa-magnifying-glass"></i></li>
+          <li><i class="fa-solid fa-ellipsis-vertical"></i></li>
+        </div>
+      </div>
+      <!-- Chat Container -->
+      <div class="chat-container"></div>
+      <!-- Chat Input -->
+      <div class="chatbox-input">
+        <i class="fa-regular fa-face-grin"></i>
+        <i class="fa-sharp fa-solid fa-paperclip"></i>
+        <form id="chatForm" style="display: flex; width: 100%;">
+          <input type="text" placeholder="Type a message" id="messageInput">
+          <button type="submit" style="display: none;"></button>
+        </form>
+        <i class="fa-solid fa-microphone"></i>
+      </div>
+    </div>
+  </div>
+   <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const chatList = document.querySelector(".chat-list");
+      
+      const chatContainer = document.querySelector(".chat-container");
+      const chatForm = document.getElementById("chatForm");
+      const messageInput = document.getElementById("messageInput");
+      const chatUserName = document.getElementById("chatUserName");
+      const chatUserImg = document.getElementById("chatUserImg");
+      const chatUserStatus = document.getElementById("chatUserStatus");
+      const addUserButton = document.getElementById("addUserButton");
+
+      const defaultImageUrl = "https://thumbs.dreamstime.com/b/default-avatar-profile-vector-user-profile-default-avatar-profile-vector-user-profile-profile-179376714.jpg";
+
+      let myUsername = prompt("Please enter your username:") || "Anonymous";
+      let chan = null;
+      chatList.innerHTML = "";
+
+      chan = window.socket.channel("chat:lobby", {});
+      chan.join().receive("ok", resp => {
+        console.log("joined lobby room")
+      })
+
+      chan.push("new_user", {
+        username: myUsername,
+      })
+
+      chan.on("list_user", ({data}) => {
+        if (data) {
+            chatList.innerHTML = ""; // Reset list user
+            for (let i = 0; i < data.length; i++) {
+                if (data[i].user)
+                    addUser(data[i].user, defaultImageUrl);
+            }
+        }
+      })
+
+      chan.on("new_user", ({new_user}) => {
+        addUser(new_user, defaultImageUrl)
+      })
+
+      // Store users and chats
+      const userChats = {};
+
+      // Add user to the chat list
+      const addUser = (name, img) => {
+        const chatBox = document.createElement("div");
+        chatBox.classList.add("chat-box");
+        chatBox.innerHTML = `
+          <div class="img-box">
+            <img class="img-cover" src="${img}" alt="">
+          </div>
+          <div class="chat-details">
+            <div class="text-head">
+              <h4>${name}</h4>
+            </div>
+            <div class="text-message">
+              <p>Click to chat</p>
+            </div>
+          </div>
+        `;
+        chatBox.addEventListener("click", () => openChat(name, img));
+        chatList.appendChild(chatBox);
+      };
+
+      // Open chat with a specific user
+      const openChat = (name, img) => {
+        chatUserName.textContent = name;
+        chatUserImg.src = img;
+        chatUserStatus.textContent = "Online";
+
+        if(chan) {
+          chan.leave()
+            .receive("ok", () => console.log("successfully leave channel"))
+        }
+
+        const channelName = `chat:${[myUsername, name].sort().join(":")}`;
+        chan = window.socket.channel(channelName, {})
+
+        chan.join().receive("ok", () => {
+            console.log("successfully join private chat room")
+            chan.push("get_history_chat", {})
+          })
+
+        chan.on("get_chat_history", ({messages}) => {
+           if (messages) {
+                    for(let i =0; i <  messages.length; i++) {
+                      if(messages[i]) {
+                        let {message, sender} = messages[i];
+                        addMessage(message, sender);
+                      }
+                    }
+                }
+        })
+
+        // Clear current chat container and load user-specific chats
+        chatContainer.innerHTML = "";
+
+        // Handle message sending
+        chatForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const message = messageInput.value.trim();
+          if (message) {
+            const new_message = {
+              sender: myUsername,
+              msg: message
+            }
+            chan.push("send_dm", new_message)
+            <%!-- addMessage(message, myUsername); // Add user message --%>
+            messageInput.value = ""; // Clear input
+          }
+        });
+
+        chan.on("send_dm", ({msg, sender}) => {
+          addMessage(msg, sender)
+        })
+
+        // Set active chat
+        <%!-- chatForm.dataset.activeChat = name; --%>
+      };
+
+      // Add messages to the chat container
+      const addMessage = (message, sender) => {
+        const messageBox = document.createElement("div");
+        let isMyMessage = sender === myUsername;
+        messageBox.classList.add("message-box", isMyMessage ? "my-message" : "friend-message");
+        messageBox.innerHTML = `
+          <p>${message}<br><span>${new Date().toLocaleTimeString()}</span></p>
+        `;
+        chatContainer.appendChild(messageBox);
+        chatContainer.scrollTop = chatContainer.scrollHeight;    
+      };
+
+      // Add a new user when the button is clicked
+      addUserButton.addEventListener("click", () => {
+        const name = prompt("Enter the name of the new user:");
+        const img = prompt("Enter the image URL for the new user:");
+        if (name && img) {
+          addUser(name, img);
+        }
+      });
+
+      // Add default users
+      <%!-- addUser("Nowfal", "https://thumbs.dreamstime.com/b/default-avatar-profile-vector-user-profile-default-avatar-profile-vector-user-profile-profile-179376714.jpg");
+      addUser("Rohan", "https://images.pexels.com/photos/2379005/pexels-photo-2379005.jpeg");
+      addUser("Zoya", "https://images.pexels.com/photos/8367221/pexels-photo-8367221.jpeg"); --%>
+    });
+  </script>
