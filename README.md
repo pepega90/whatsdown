@@ -1,5 +1,7 @@
 # Whatsdown
 
+https://github.com/user-attachments/assets/b3ea1584-945d-4795-9ba4-9a06966693ee
+
 To start your Phoenix server:
 
   * Run `mix setup` to install and setup dependencies
